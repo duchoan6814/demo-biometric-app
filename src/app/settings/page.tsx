@@ -1,27 +1,75 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { enrollBiometric, storage, getDeviceId } from "@/lib/api";
 
 export default function SettingsPage() {
   const router = useRouter();
   const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [userName, setUserName] = useState("Người dùng");
+  const [userEmail, setUserEmail] = useState("user@example.com");
 
-  const handleToggleBiometric = () => {
+  useEffect(() => {
+    // Check login status
+    const token = storage.getAccessToken();
+    if (!token) {
+      router.push("/login");
+      return;
+    }
+
+    // Load user info
+    const userInfo = storage.getUserInfo();
+    if (userInfo) {
+      setUserName(userInfo.name);
+      setUserEmail(`${userInfo.name}@example.com`);
+    }
+
+    // Load biometric status
+    setBiometricEnabled(storage.isBiometricEnabled());
+  }, [router]);
+
+  const handleToggleBiometric = async () => {
     const newState = !biometricEnabled;
-    setBiometricEnabled(newState);
-    // TODO: Handle biometric toggle logic
-    console.log("Biometric enabled:", newState);
-    if (newState) {
-      alert("Đã bật xác thực sinh trắc học");
-    } else {
-      alert("Đã tắt xác thực sinh trắc học");
+    setLoading(true);
+
+    try {
+      if (newState) {
+        // Enable biometric - call enroll API
+        const accessToken = storage.getAccessToken();
+        if (!accessToken) {
+          router.push("/login");
+          return;
+        }
+
+        const deviceId = getDeviceId();
+        const response = await enrollBiometric(accessToken, deviceId, "Web Browser");
+
+        if (response.status === "success" && response.data) {
+          storage.setBiometricToken(response.data.biometric_token);
+          storage.setBiometricEnabled(true);
+          setBiometricEnabled(true);
+          alert("Đã bật xác thực sinh trắc học thành công!");
+        } else {
+          alert("Không thể bật sinh trắc học. Vui lòng thử lại.");
+        }
+      } else {
+        // Disable biometric - remove local token
+        storage.removeBiometricToken();
+        storage.setBiometricEnabled(false);
+        setBiometricEnabled(false);
+        alert("Đã tắt xác thực sinh trắc học");
+      }
+    } catch {
+      alert("Đã có lỗi xảy ra. Vui lòng thử lại.");
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleLogout = () => {
-    // TODO: Handle logout logic
-    console.log("Logging out...");
+    storage.clearAll();
     router.push("/login");
   };
 
@@ -61,10 +109,10 @@ export default function SettingsPage() {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
-                Người dùng Demo
+                {userName}
               </h2>
               <p className="text-gray-500 dark:text-gray-400 text-sm">
-                demo@example.com
+                {userEmail}
               </p>
             </div>
           </div>
@@ -107,7 +155,8 @@ export default function SettingsPage() {
               <button
                 type="button"
                 onClick={handleToggleBiometric}
-                className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors ${
+                disabled={loading}
+                className={`relative inline-flex h-8 w-14 items-center rounded-full transition-colors disabled:opacity-50 ${
                   biometricEnabled
                     ? "bg-green-500"
                     : "bg-gray-200 dark:bg-gray-700"

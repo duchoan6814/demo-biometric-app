@@ -2,20 +2,40 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { registerUser, storage } from "@/lib/api";
 
 export default function RegisterPage() {
+  const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Handle registration logic
-    console.log("Register:", formData);
-    alert("Đăng ký thành công!");
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await registerUser(formData.email, formData.password, formData.name);
+      
+      if (response.status === "success" && response.data) {
+        storage.setAccessToken(response.data.access_token);
+        storage.setUserInfo(response.data.user_info);
+        router.push("/settings");
+      } else {
+        setError(response.message || "Đăng ký thất bại");
+      }
+    } catch {
+      setError("Đã có lỗi xảy ra. Vui lòng thử lại.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -47,6 +67,11 @@ export default function RegisterPage() {
 
       {/* Form */}
       <div className="flex-1 px-6">
+        {error && (
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl">
+            <p className="text-red-600 dark:text-red-400 text-sm">{error}</p>
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Name Field */}
           <div>
@@ -194,9 +219,10 @@ export default function RegisterPage() {
           {/* Submit Button */}
           <button
             type="submit"
-            className="w-full py-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/30 transition-all active:scale-[0.98]"
+            disabled={loading}
+            className="w-full py-4 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-300 text-white font-semibold rounded-xl shadow-lg shadow-blue-500/30 transition-all active:scale-[0.98] disabled:active:scale-100"
           >
-            Đăng ký
+            {loading ? "Đang xử lý..." : "Đăng ký"}
           </button>
         </form>
 
