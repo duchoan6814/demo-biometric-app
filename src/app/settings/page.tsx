@@ -4,6 +4,16 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { enrollBiometric, storage, getDeviceId } from "@/lib/api";
 
+interface BiometricEventDetail {
+  biometric_token?: string; // Khi người dùng bật sinh trắc học thì chuyền token lên cho APP để lưu lại
+}
+
+interface BiometricResultEventDetail {
+  status: "success" | "failure";
+  message?: string;
+  biometric_token?: string;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const [biometricEnabled, setBiometricEnabled] = useState(false);
@@ -44,16 +54,30 @@ export default function SettingsPage() {
         }
 
         const deviceId = getDeviceId();
-        const response = await enrollBiometric(accessToken, deviceId, "Web Browser");
+        const response = await enrollBiometric(
+          accessToken,
+          deviceId,
+          "Web Browser",
+        );
+        console.log("🚀 ~ handleToggleBiometric ~ response:", response);
 
-        if (response.status === "success" && response.data) {
-          storage.setBiometricToken(response.data.biometric_token);
-          storage.setBiometricEnabled(true);
-          setBiometricEnabled(true);
-          alert("Đã bật xác thực sinh trắc học thành công!");
-        } else {
-          alert("Không thể bật sinh trắc học. Vui lòng thử lại.");
-        }
+        // TODO: dispatch event to app
+        const triggerBiometricEvent = new CustomEvent("TRIGGER_BIOMETRIC", {
+          detail: {
+            biometric_token: response?.data?.biometric_token,
+          } as BiometricEventDetail,
+        });
+
+        window.dispatchEvent(triggerBiometricEvent);
+
+        // if (response.status === "success" && response.data) {
+        //   storage.setBiometricToken(response.data.biometric_token);
+        //   storage.setBiometricEnabled(true);
+        //   setBiometricEnabled(true);
+        //   alert("Đã bật xác thực sinh trắc học thành công!");
+        // } else {
+        //   alert("Không thể bật sinh trắc học. Vui lòng thử lại.");
+        // }
       } else {
         // Disable biometric - remove local token
         storage.removeBiometricToken();
@@ -72,6 +96,28 @@ export default function SettingsPage() {
     storage.clearAll();
     router.push("/login");
   };
+
+  useEffect(() => {
+    const handleBiometricEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<BiometricResultEventDetail>;
+      const { status, message, biometric_token } = customEvent.detail;
+
+      if (status === "success" && biometric_token) {
+        storage.setBiometricToken(biometric_token);
+        storage.setBiometricEnabled(true);
+        setBiometricEnabled(true);
+        alert(message || "Đã bật xác thực sinh trắc học thành công!");
+      } else {
+        alert(message || "Xác thực sinh trắc học thất bại");
+      }
+    };
+
+    window.addEventListener("BIOMETRIC_RESULT", handleBiometricEvent);
+
+    return () => {
+      window.removeEventListener("BIOMETRIC_RESULT", handleBiometricEvent);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
